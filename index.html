@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>主页</title>
+  <link rel="icon" href="icon.ico" sizes="any">
+  <link rel="stylesheet" href="css/iconfont.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <main class="page">
+
+    <!-- 时钟 / 日期 -->
+    <header class="clock-block">
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="date" id="date">加载中…</div>
+    </header>
+
+    <!-- 搜索框 -->
+    <form class="search" id="searchForm" autocomplete="off">
+      <div class="engine-switch" id="engineSwitch"></div>
+      <input class="search-input" id="searchInput" type="text"
+             placeholder="搜索或输入网址…" spellcheck="false" autofocus>
+      <button class="search-btn" type="submit" aria-label="搜索">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="M20 20l-3.6-3.6"></path>
+        </svg>
+      </button>
+    </form>
+
+    <!-- 常用网站 -->
+    <section class="block">
+      <div class="block-head">
+        <h2 class="section-title">常用网站</h2>
+        <button class="edit-toggle icon-button" id="sitesEditBtn" type="button" aria-label="编辑常用网站" title="编辑常用网站">
+          <span class="iconfont icon-bianji" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="site-grid" id="siteGrid"></div>
+    </section>
+
+    <!-- 调试入口 -->
+    <section class="block">
+      <div class="block-head">
+        <h2 class="section-title">调试入口</h2>
+        <button class="edit-toggle icon-button" id="debugEditBtn" type="button" aria-label="编辑调试入口" title="编辑调试入口">
+          <span class="iconfont icon-bianji" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="debug-list" id="debugList"></div>
+    </section>
+
+  </main>
+
+  <!-- 背景设置 -->
+  <aside class="background-control">
+    <button class="background-toggle icon-button" id="backgroundEditBtn" type="button" aria-label="背景设置" aria-expanded="false" title="背景设置">
+      <span class="iconfont icon-shezhi" aria-hidden="true"></span>
+    </button>
+    <div class="background-settings" id="backgroundSettings" hidden>
+      <h2 class="background-title">背景设置</h2>
+      <fieldset class="theme-settings">
+        <legend>主题</legend>
+        <label class="theme-option">
+          <input type="radio" name="theme" value="light">
+          <span class="theme-option-icon iconfont icon-qiansemoshi2" aria-hidden="true"></span>
+          浅色
+        </label>
+        <label class="theme-option">
+          <input type="radio" name="theme" value="dark">
+          <span class="theme-option-icon iconfont icon-shensemoshi2" aria-hidden="true"></span>
+          深色
+        </label>
+        <label class="theme-option">
+          <input type="radio" name="theme" value="system" checked>
+          跟随主题
+        </label>
+      </fieldset>
+      <label class="field">
+        <span>图片地址</span>
+        <span class="background-url-field">
+          <input id="backgroundUrl" type="text" placeholder="https://example.com/bg.jpg 或 file:///C:/Pictures/bg.jpg">
+          <button class="btn background-file-btn" id="backgroundFileBtn" type="button">或打开…</button>
+        </span>
+      </label>
+      <input id="backgroundFile" type="file" accept="image/*" hidden>
+      <p class="background-file-status" id="backgroundFileStatus" aria-live="polite"></p>
+      <label class="range-field" for="backgroundBlur">
+        <span>模糊度 <output id="backgroundBlurValue" for="backgroundBlur">0px</output></span>
+        <input id="backgroundBlur" type="range" min="0" max="24" step="1" value="0">
+      </label>
+      <div class="background-actions">
+        <button class="btn" id="backgroundClear" type="button">清除</button>
+        <button class="btn primary" id="backgroundSave" type="button">保存</button>
+      </div>
+      <p class="background-hint">支持选择本地图片或直接输入网络图片直链。保存后生效。</p>
+      <p class="background-credit">青羽·主页&emsp;|&emsp;开发 by <a href="https://github.com/goldsheep3/ciane-homepage" target="_blank" rel="noopener">GoldSheep3</a>，使用 Codex 完成。</p>
+    </div>
+  </aside>
+
+  <!-- 添加快捷链接弹窗 -->
+  <div class="modal-mask" id="modalMask" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <h3 class="modal-title" id="modalTitle">添加快捷链接</h3>
+      <label class="field">
+        <span>名称</span>
+        <input id="siteName" type="text" placeholder="例如：GitHub" maxlength="24">
+      </label>
+      <label class="field">
+        <span>网址</span>
+        <input id="siteUrl" type="text" placeholder="例如：https://github.com">
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="modalCancel">取消</button>
+        <button type="button" class="btn primary" id="modalSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
