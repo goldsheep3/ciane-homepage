@@ -32,7 +32,7 @@
     defaultTheme: 'system',
 
     defaultBackground: {
-      url: 'https://home.ciane.cn/img/bg.jpg',
+      url: 'https://uapis.cn/api/v1/image/bing-daily',
       blur: 6
     },
 
@@ -41,9 +41,12 @@
       sites:  'homepage.sites',
       debug:  'homepage.debug',
       background: 'homepage.background',
+      backgroundRefresh: 'homepage.background.refresh',
       theme: 'homepage.theme'
     }
   };
+
+  const FAVICON_CACHE = 'homepage-favicons-v2';
 
   /* =========================================================
    * 本地存储
@@ -226,8 +229,54 @@
     button.title = label;
   }
 
+  function backgroundDay() {
+    const now = new Date();
+    return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  }
+
+  function isRemoteBackground(url) {
+    return /^https?:\/\//i.test(url);
+  }
+
+  function getBackgroundRefresh() {
+    const refresh = store.get(CONFIG.keys.backgroundRefresh, null);
+    if (!refresh || typeof refresh !== 'object') return { date: '', remote: false };
+    return {
+      date: typeof refresh.date === 'string' ? refresh.date : '',
+      remote: refresh.remote === true
+    };
+  }
+
+  function hasRefreshedBackgroundToday(url) {
+    const refresh = getBackgroundRefresh();
+    return isRemoteBackground(url) && refresh.remote && refresh.date === backgroundDay();
+  }
+
+  function markBackgroundRefreshed(url) {
+    store.set(CONFIG.keys.backgroundRefresh, {
+      date: backgroundDay(),
+      remote: isRemoteBackground(url)
+    });
+  }
+
+  function dailyBackgroundUrl(url, refreshToday) {
+    if (!refreshToday) return url;
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.set('homepage-background-day', backgroundDay());
+      return parsed.href;
+    } catch (e) {
+      return url;
+    }
+  }
+
   function applyBackground() {
-    document.documentElement.style.setProperty('--background-image', background.url ? 'url("' + background.url.replace(/"/g, '\\"') + '")' : 'none');
+    const refreshToday = isRemoteBackground(background.url) && !hasRefreshedBackgroundToday(background.url);
+    const imageUrl = dailyBackgroundUrl(background.url, refreshToday);
+    if (refreshToday) {
+      markBackgroundRefreshed(background.url);
+    }
+    document.documentElement.style.setProperty('--background-image', imageUrl ? 'url("' + imageUrl.replace(/"/g, '\\"') + '")' : 'none');
     document.documentElement.style.setProperty('--background-blur', background.blur + 'px');
     document.body.classList.toggle('has-background', Boolean(background.url));
   }
@@ -272,6 +321,7 @@
         url: String(reader.result),
         blur: Number(backgroundBlurInput.value)
       };
+      markBackgroundRefreshed(background.url);
       backgroundUrlInput.value = background.url;
       applyBackground();
       const saved = store.set(CONFIG.keys.background, background);
@@ -292,6 +342,7 @@
       url: backgroundUrlInput.value.trim(),
       blur: Number(backgroundBlurInput.value)
     };
+    markBackgroundRefreshed(background.url);
     store.set(CONFIG.keys.background, background);
     applyBackground();
     backgroundFileStatus.textContent = '';
@@ -299,6 +350,7 @@
 
   backgroundClearBtn.addEventListener('click', function () {
     background = { url: '', blur: 0 };
+    markBackgroundRefreshed(background.url);
     store.set(CONFIG.keys.background, background);
     populateBackgroundForm();
     applyBackground();
@@ -334,6 +386,72 @@
     return h;
   }
 
+  // 大多数网站都在根目录提供 favicon.ico。使用 img 而不是 fetch 读取图标，
+  // 可以避免跨域网站未开放 CORS 时无法显示图标的问题。
+  function faviconUrlFor(siteUrl) {
+    try {
+      const url = new URL(siteUrl, window.location.href);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+      return url.origin + '/favicon.ico';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // 除浏览器自身的 HTTP 缓存外，在支持 Cache Storage 的安全上下文中再保存一份。
+  // no-cors 响应不可读取，但可以原样缓存并由 service worker 在后续访问时返回。
+  function cacheFavicon(url) {
+    if (!url || !window.caches) return;
+    caches.open(FAVICON_CACHE).then(function (cache) {
+      return cache.match(url).then(function (cached) {
+        if (cached) return null;
+        return fetch(url, { mode: 'no-cors', credentials: 'omit' }).then(function (response) {
+          return cache.put(url, response);
+        });
+      });
+    }).catch(function () {
+      // 缓存不可用时仍由浏览器的普通图片缓存处理，无需影响页面显示。
+    });
+  }
+
+  function createSiteIcon(site) {
+    const icon = document.createElement('span');
+    icon.className = 'site-icon site-icon-fallback';
+    const hue = hueOf(site.name);
+    icon.style.background = 'hsl(' + hue + ', 70%, 92%)';
+    icon.style.color = 'hsl(' + hue + ', 45%, 38%)';
+
+    const fallback = document.createElement('span');
+    fallback.className = 'site-icon-fallback';
+    fallback.textContent = firstChar(site.name);
+    icon.appendChild(fallback);
+
+    const faviconUrl = site.icon || faviconUrlFor(site.url);
+    if (!faviconUrl) return icon;
+
+    const image = document.createElement('img');
+    image.className = 'site-favicon';
+    image.alt = '';
+    image.width = 24;
+    image.height = 24;
+    // 图标默认不可见，不能使用 lazy；浏览器会跳过隐藏元素的懒加载请求。
+    image.loading = 'eager';
+    image.referrerPolicy = 'no-referrer';
+    image.addEventListener('load', function () {
+      icon.classList.remove('site-icon-fallback');
+      icon.classList.add('has-favicon');
+      cacheFavicon(image.currentSrc || image.src);
+    });
+    image.addEventListener('error', function () {
+      image.remove();
+    });
+    // 必须在绑定事件后再赋值。刷新时图片可能直接命中内存缓存，
+    // 若先赋值会错过 load 事件，导致图标继续被隐藏。
+    image.src = faviconUrl;
+    icon.appendChild(image);
+    return icon;
+  }
+
   function renderSites() {
     siteGrid.innerHTML = '';
 
@@ -347,15 +465,13 @@
 
       // 编辑态下点击卡片不跳转
       if (sitesEditing) {
-        card.addEventListener('click', function (e) { e.preventDefault(); });
+        card.addEventListener('click', function (e) {
+          e.preventDefault();
+          openModal(index);
+        });
       }
 
-      const icon = document.createElement('span');
-      icon.className = 'site-icon';
-      icon.textContent = firstChar(site.name);
-      const hue = hueOf(site.name);
-      icon.style.background = 'hsl(' + hue + ', 70%, 92%)';
-      icon.style.color = 'hsl(' + hue + ', 45%, 38%)';
+      const icon = createSiteIcon(site);
 
       const name = document.createElement('span');
       name.className = 'site-name';
@@ -405,25 +521,40 @@
    * 添加快捷链接弹窗
    * =======================================================*/
   const mask = document.getElementById('modalMask');
+  const modalTitle = document.getElementById('modalTitle');
   const nameInput = document.getElementById('siteName');
   const urlInput = document.getElementById('siteUrl');
+  const iconUrlInput = document.getElementById('siteIconUrl');
+  let editingSiteIndex = null;
 
-  function openModal() {
-    nameInput.value = '';
-    urlInput.value = '';
+  function openModal(index) {
+    editingSiteIndex = Number.isInteger(index) ? index : null;
+    const site = editingSiteIndex === null ? null : sites[editingSiteIndex];
+    modalTitle.textContent = site ? '编辑快捷链接' : '添加快捷链接';
+    nameInput.value = site ? site.name : '';
+    urlInput.value = site ? site.url : '';
+    iconUrlInput.value = site && site.icon ? site.icon : '';
     mask.hidden = false;
     nameInput.focus();
   }
 
-  function closeModal() { mask.hidden = true; }
+  function closeModal() {
+    mask.hidden = true;
+    editingSiteIndex = null;
+  }
 
   function saveNewSite() {
     const name = nameInput.value.trim();
     let url = urlInput.value.trim();
+    let icon = iconUrlInput.value.trim();
     if (!name) { nameInput.focus(); return; }
     if (!url) { urlInput.focus(); return; }
     if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
-    sites.push({ name: name, url: url });
+    if (icon && !/^https?:\/\//i.test(icon)) icon = 'https://' + icon;
+    const site = { name: name, url: url };
+    if (icon) site.icon = icon;
+    if (editingSiteIndex === null) sites.push(site);
+    else sites[editingSiteIndex] = site;
     saveSites();
     renderSites();
     closeModal();
@@ -647,6 +778,18 @@
   /* =========================================================
    * 初始化
    * =======================================================*/
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(function () {
+      return navigator.serviceWorker.ready;
+    }).then(function () {
+      // 首次注册时，首屏资源早于 Worker 激活。Worker 接管后重新渲染，
+      // 让图标请求进入它的 fetch 处理器。
+      renderSites();
+    }).catch(function () {
+      // file:// 或非安全上下文无法注册 service worker，不影响图标加载。
+    });
+  }
+
   renderSites();
   renderDebug();
 })();
